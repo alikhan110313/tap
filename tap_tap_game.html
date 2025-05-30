@@ -1,0 +1,266 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Tap Tap Game</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: #f9f9f9;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+      touch-action: manipulation;
+    }
+    #splash {
+      position: fixed;
+      inset: 0;
+      background: #27ae60;
+      color: white;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+      padding: 20px;
+    }
+    #splash h1 {
+      font-size: 2.5rem;
+      margin-bottom: 40px;
+    }
+    #startBtn {
+      font-size: 1.5rem;
+      padding: 15px 40px;
+      border: none;
+      border-radius: 12px;
+      background: white;
+      color: #27ae60;
+      font-weight: bold;
+      cursor: pointer;
+      width: 100%;
+      max-width: 300px;
+    }
+    #gameContainer {
+      display: none;
+      height: 100vh;
+      width: 100vw;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+    .game {
+      background: #fff;
+      padding: 20px;
+      border-radius: 15px;
+      box-shadow: 0 0 15px rgba(0,0,0,0.1);
+      max-width: 400px;
+      width: 90%;
+      text-align: center;
+    }
+    h1.gameTitle {
+      margin-bottom: 10px;
+      font-size: 2rem;
+    }
+    #musicToggle {
+      position: static;
+      display: inline-block;
+      margin-bottom: 10px;
+      font-size: 24px;
+      background: rgba(255,255,255,0.8);
+      padding: 6px 10px;
+      border-radius: 30px;
+      box-shadow: 0 0 6px rgba(0,0,0,0.1);
+      user-select: none;
+    }
+    #tapImage {
+      width: 200px;
+      height: 200px;
+      cursor: pointer;
+      margin: 20px auto;
+      border-radius: 30%;
+      background-color: white;
+      transition: transform 0.2s ease, box-shadow 0.3s ease, filter 0.3s ease;
+      box-shadow:
+        0 8px 20px rgba(0, 0, 0, 0.25),
+        inset 0 -5px 10px rgba(255, 255, 255, 0.2),
+        inset 0 5px 10px rgba(0, 0, 0, 0.05);
+      filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.3));
+    }
+    #tapImage:active {
+      transform: scale(0.92) translateY(3px);
+      box-shadow:
+        0 4px 10px rgba(0, 0, 0, 0.2),
+        inset 0 2px 4px rgba(0, 0, 0, 0.1);
+      filter: brightness(0.98);
+    }
+    #tapImage.disabled {
+      cursor: not-allowed;
+      opacity: 0.5;
+      filter: grayscale(60%) blur(1px);
+    }
+    .stats {
+      margin: 10px 0;
+      font-size: 18px;
+    }
+    button#upgradeTapBtn {
+      margin-top: 15px;
+      padding: 10px 15px;
+      font-size: 16px;
+      border: none;
+      border-radius: 10px;
+      background: #27ae60;
+      color: white;
+      cursor: pointer;
+      width: 100%;
+      max-width: 300px;
+    }
+    button#upgradeTapBtn:disabled {
+      background: #aaa;
+      cursor: not-allowed;
+    }
+    @media (max-width: 400px) {
+      #tapImage {
+        width: 150px;
+        height: 150px;
+      }
+      h1.gameTitle {
+        font-size: 1.5rem;
+      }
+      .stats {
+        font-size: 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="splash">
+    <h1>Developed by Ali</h1>
+    <button id="startBtn">Start Game</button>
+  </div>
+  <div id="gameContainer">
+    <div class="game">
+      <h1 class="gameTitle"> Tap Tap By Ali</h1>
+      <div id="musicToggle" title="Toggle Sound">🔊</div>
+      <div class="stats">Balance: <span id="balance">0</span></div>
+      <div class="stats">Energy: <span id="energy">1000</span> / 1000</div>
+      <img src="https://i.imgur.com/OYVpe2W.png" alt="Hamster" id="tapImage" draggable="false" />
+      <button id="upgradeTapBtn">
+        Upgrade Tap Power (+1 per tap) - Cost: <span id="upgradeCost">50</span>
+      </button>
+      <div class="stats">Current Tap Power: <span id="tapPower">1</span></div>
+    </div>
+  </div>
+  <audio id="tapSound" src="https://www.myinstants.com/media/sounds/mario-coin.mp3" preload="auto"></audio>
+  <script>
+    const MAX_ENERGY = 1000;
+    const ENERGY_REGEN_INTERVAL_MS = 5000; // 12 per minute
+
+    const splash = document.getElementById('splash');
+    const startBtn = document.getElementById('startBtn');
+    const gameContainer = document.getElementById('gameContainer');
+    const tapSound = document.getElementById('tapSound');
+    const musicToggle = document.getElementById('musicToggle');
+    const balanceEl = document.getElementById('balance');
+    const energyEl = document.getElementById('energy');
+    const tapImage = document.getElementById('tapImage');
+    const upgradeBtn = document.getElementById('upgradeTapBtn');
+    const upgradeCostEl = document.getElementById('upgradeCost');
+    const tapPowerEl = document.getElementById('tapPower');
+
+    let userId = "demoUser_1";
+    if (window.Telegram && Telegram.WebApp && Telegram.WebApp.initDataUnsafe?.user?.id) {
+      userId = Telegram.WebApp.initDataUnsafe.user.id;
+    }
+    const localStorageKey = `tapHamsterGame_${userId}`;
+
+    let isSoundOn = JSON.parse(localStorage.getItem('tapSound')) ?? true;
+    let gameData = JSON.parse(localStorage.getItem(localStorageKey)) || {
+      balance: 0,
+      energy: MAX_ENERGY,
+      tapPower: 1,
+      upgradeCost: 50,
+      lastEnergyUpdateTime: Date.now()
+    };
+
+    function saveGame() {
+      localStorage.setItem(localStorageKey, JSON.stringify(gameData));
+    }
+
+    function updateUI() {
+      balanceEl.textContent = gameData.balance;
+      energyEl.textContent = gameData.energy;
+      upgradeCostEl.textContent = gameData.upgradeCost;
+      tapPowerEl.textContent = gameData.tapPower;
+      tapImage.classList.toggle('disabled', gameData.energy <= 0);
+      upgradeBtn.disabled = gameData.balance < gameData.upgradeCost;
+    }
+
+    function regenerateEnergy() {
+      if (gameData.energy < MAX_ENERGY) {
+        const now = Date.now();
+        const elapsed = now - gameData.lastEnergyUpdateTime;
+        const energyToAdd = Math.floor(elapsed / ENERGY_REGEN_INTERVAL_MS);
+        if (energyToAdd > 0) {
+          gameData.energy = Math.min(MAX_ENERGY, gameData.energy + energyToAdd);
+          gameData.lastEnergyUpdateTime += energyToAdd * ENERGY_REGEN_INTERVAL_MS;
+          saveGame();
+        }
+      } else {
+        gameData.lastEnergyUpdateTime = Date.now();
+      }
+    }
+
+    function updateMusicIcon() {
+      musicToggle.textContent = isSoundOn ? '🔊' : '🔇';
+      localStorage.setItem('tapSound', JSON.stringify(isSoundOn));
+    }
+
+    tapImage.addEventListener('click', () => {
+      regenerateEnergy();
+      if (gameData.energy > 0) {
+        if (isSoundOn) {
+          tapSound.currentTime = 0;
+          tapSound.play();
+        }
+        gameData.balance += gameData.tapPower;
+        gameData.energy -= 1;
+        gameData.lastEnergyUpdateTime = Date.now();
+        saveGame();
+        updateUI();
+      }
+    });
+
+    upgradeBtn.addEventListener('click', () => {
+      if (gameData.balance >= gameData.upgradeCost) {
+        gameData.balance -= gameData.upgradeCost;
+        gameData.tapPower += 1;
+        gameData.upgradeCost = Math.floor(gameData.upgradeCost * 1.5);
+        saveGame();
+        updateUI();
+      }
+    });
+
+    setInterval(() => {
+      regenerateEnergy();
+      updateUI();
+    }, 1000);
+
+    musicToggle.addEventListener('click', () => {
+      isSoundOn = !isSoundOn;
+      updateMusicIcon();
+    });
+
+    updateMusicIcon();
+    updateUI();
+
+    startBtn.addEventListener('click', () => {
+      splash.style.display = 'none';
+      gameContainer.style.display = 'flex';
+      document.body.style.overflow = 'hidden';
+    });
+  </script>
+</body>
+</html>
